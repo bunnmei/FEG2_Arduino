@@ -1,4 +1,8 @@
 #include <ArduinoBLE.h>
+#include <EEPROM.h>
+
+#include <Adafruit_MAX31856.h>
+
 #include <string>
 
 const char * deviceServiceUuid = "811b864d-718c-b035-804d-92c4761243c0";
@@ -18,17 +22,32 @@ BLEByteCharacteristic brightnessCharacteristic(brightnessCharacteristicUuid, BLE
 BLEByteCharacteristic tempF_Characteristic(tempF_CaribCharacteristicUuid, BLERead | BLEWrite);
 BLEByteCharacteristic tempS_Characteristic(tempS_CaribCharacteristicUuid, BLERead | BLEWrite);
 
+const int ADDR_MAGIC = 0;  // 初期化済みか確認するフラグ
+const int ADDR_CALIB_F = 1;  // 値を保存するアドレス
+const int ADDR_CALIB_S = 2;
+const int ADDR_BRIGHTNESS = 3;
+
 int8_t brightness = 5;
 int8_t calibF_value = 0; //-50 ~ 50
 int8_t calibS_value = 0; //-50 ~ 50
 
+// Use software SPI:                           CS, DI, DO, CLK
+Adafruit_MAX31856 maxthermo = Adafruit_MAX31856(10, 11, 12, 13);
+Adafruit_MAX31856 maxthermo2 = Adafruit_MAX31856(9, 11, 12, 13);
+
 void setup() {
   
   Serial.begin(115200);
+  eeprom_check();
 
-  BLE.setDeviceName("FEG2_Arduino_v1.0.0");
+  maxthermo.begin();
+  maxthermo.setThermocoupleType(MAX31856_TCTYPE_K);
+
+  maxthermo2.begin();
+  maxthermo2.setThermocoupleType(MAX31856_TCTYPE_K);
+
+  BLE.setDeviceName("FEG2_A_v1.0.0");
   BLE.setLocalName("FEG2");
-  
 
   if(!BLE.begin()) {
     Serial.println("BLE Start failed!");
@@ -73,8 +92,8 @@ void loop() {
 
     while (central.connected()) {
       BLE.poll();
-      float value = genFloat();
-      float value2 = genFloat();
+      float value = maxthermo.readThermocoupleTemperature() + validate(calibF_value);
+      float value2 = maxthermo2.readThermocoupleTemperature() + validate(calibS_value);
       tempF_ResponseCharacteristic.setValue(value);
       tempS_ResponseCharacteristic.setValue(value2);
       delay(1000);
@@ -85,21 +104,30 @@ void loop() {
 
 }
 
+float validate(int8_t calib){
+  return (float)(calib) / 10;
+}
+
 void onWirteCallBack(BLEDevice central, BLECharacteristic characteristic) {
   if(characteristic.uuid() == brightnessCharacteristic.uuid()) {
     int8_t v = brightnessCharacteristic.value();
     Serial.print("brightness updated: ");
     Serial.println(v);
+    brightness = eeprom_calib_write_valid(v);
 
-  } else if (characteristic.uuid() == tempF_Characteristic.uuid()) {
+  } 
+  if (characteristic.uuid() == tempF_Characteristic.uuid()) {
     int8_t v = tempF_Characteristic.value();
     Serial.print("Calib_F updated: ");
     Serial.println(v);
+    calibF_value = eeprom_calib_write_valid(v, ADDR_CALIB_F);
 
-  } else if (characteristic.uuid() == tempS_Characteristic.uuid()) {
+  } 
+  if (characteristic.uuid() == tempS_Characteristic.uuid()) {
     int8_t v = tempS_Characteristic.value();
     Serial.print("Calib_S updated: ");
     Serial.println(v);
+    calibS_value = eeprom_calib_write_valid(v, ADDR_CALIB_S);
   }
 }
 
@@ -121,6 +149,59 @@ void onReadCallBack(BLEDevice central, BLECharacteristic characteristic) {
 
 }
 
+int8_t eeprom_calib_write_valid(int8_t receValue, int addr) {
+  
+  int8_t newValue = receValue;
+  if(receValue > 50) {
+    newValue = 50;
+  } else if (receValue < -50) {
+    newValue = -50;
+  }
+
+  EEPROM.write(addr, newValue);
+
+  return newValue;
+}
+
+int8_t eeprom_calib_write_valid(int8_t receValue) {
+
+  int8_t newValue = receValue;
+  if(receValue > 8) {
+    newValue = 8;
+  } else if (receValue < 0) {
+    newValue = 0;
+  }
+
+  EEPROM.write(ADDR_BRIGHTNESS, newValue);
+
+  return newValue;
+}
+
+void eeprom_check() {
+
+
+  const byte MAGIC = 0x42;
+
+
+  if (EEPROM.read(ADDR_MAGIC) != MAGIC) {
+    // 初回起動 → 初期値を書き込む
+    int8_t calibF_DefaultValue = 0;
+    int8_t calibS_DefaultValue = 0;
+    int8_t brightnessDefaultValue = 3;  
+    EEPROM.write(ADDR_CALIB_F, calibF_DefaultValue);
+    EEPROM.write(ADDR_CALIB_S, calibS_DefaultValue);
+    EEPROM.write(ADDR_BRIGHTNESS, brightnessDefaultValue);
+    EEPROM.write(ADDR_MAGIC, MAGIC);
+
+    Serial.println("初期化しました");
+  }
+
+  
+  calibF_value = EEPROM.read(ADDR_CALIB_F);
+  calibS_value = EEPROM.read(ADDR_CALIB_S);
+  brightness = EEPROM.read(ADDR_BRIGHTNESS);
+
+}
 
 float genFloat() {
    // 1. 範囲を整数にスケーリング
@@ -145,3 +226,5 @@ float genFloat() {
 
   return random_float;
 }
+
+
