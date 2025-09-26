@@ -4,24 +4,26 @@
 
 ArduinoBLE.hとAdafruit_MAX31856.hはライブラリマネージャーからインストールする必要があります。
 
-[ArduinoBLE.h](https://github.com/arduino-libraries/ArduinoBLE)
+[ArduinoBLE.h](https://github.com/arduino-libraries/ArduinoBLE) \
 [Adafruit_MAX31856.h](https://github.com/adafruit/Adafruit_MAX31856/tree/master)
 
 ## 接続
 
-一つ目の温度計(max31856)は
-CS  -> 10
-SDI -> 11
-SDO -> 12
-CLK -> 13
+### Arduino MAX31856
 
-二つ目の温度計は
-CS  -> 9
-SDI -> 11
-SDO -> 12
-CLK -> 13
+一つ目の温度計は \
+`CS  -> 10` \
+`SDI -> 11` \
+`SDO -> 12` \
+`CLK -> 13` 
 
-## 熱電対
+二つ目の温度計は \
+`CS  -> 9` \
+`SDI -> 11` \
+`SDO -> 12` \
+`CLK -> 13` 
+
+### 熱電対
 
 max31856モジュールのVINピンがある側が赤で、
 DRDYピンがあるほうが青です。
